@@ -1,0 +1,163 @@
+---
+title: "midterm"
+author: "Nick Martini"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r}
+library(tidyverse)
+library(ggthemes)
+library(ggplot2) 
+library(dplyr)
+library(patchwork)
+library(stringr)
+
+```
+
+
+** Read in the math and reading data for all of the United States **
+```{r}
+math <- read.csv("~/Downloads/math-achievement-lea-sy2020-21 (1).csv")
+reading <- read.csv("~/Downloads/rla-achievement-lea-sy2020-21 (1).csv")
+```
+
+
+** Filter data **
+```{r}
+math <- math %>% 
+  filter(NUMVALID >= 1000) %>% 
+  filter(CATEGORY == "ALL") %>% 
+  filter(GRADE == "00") %>% 
+  mutate(PCTPROF = as.numeric(PCTPROF))
+
+reading <- reading %>% 
+  filter(NUMVALID >= 1000) %>% 
+  filter(CATEGORY == "ALL") %>% 
+  filter(GRADE == "00") %>% 
+  mutate(PCTPROF = as.numeric(PCTPROF))
+```
+
+
+
+# READING PLOT
+```{r}
+
+maryland_reading <- reading %>%
+  filter(STNAM == "MARYLAND") %>%
+  mutate(LEANM = tolower(LEANM)) %>% 
+  mutate(LEANM = str_replace_all(LEANM, " schools", ""),
+         LEANM = str_replace_all(LEANM, " county", ""),
+         LEANM = str_replace_all(LEANM, " public", ""),
+         LEANM = str_replace_all(LEANM, "george's", "georges"),
+         LEANM = str_replace_all(LEANM, "anne's", "annes"),
+         LEANM = str_replace_all(LEANM, "mary's", "marys"),
+         LEANM = str_replace_all(LEANM, "st.", "st")) %>%
+  filter(!str_detect(LEANM, "city"))
+
+```
+
+```{r}
+unique(maryland_map$subregion)
+```
+
+```{r}
+maryland_data <- left_join(maryland_map, maryland_reading, by = c("subregion" = "LEANM"))
+```
+
+```{r}
+reading.plot <- ggplot(maryland_data, aes(x=long, y=lat, group=group, fill=PCTPROF)) +
+  geom_polygon(color="black") + 
+  scale_fill_gradient(low="skyblue", high="navyblue", na.value="white", limits=c(15,45)) +
+  coord_map() +
+  theme_map() +
+  labs(title="Maryland Reading Proficiency Scores by County", fill="% Proficient") +
+  theme(plot.title=element_text(size=9), legend.direction="horizontal", legend.box.just="center",
+        legend.key.height = unit(0.2, "cm"), 
+        legend.key.width = unit(.5, "cm"))
+
+```
+
+# MATH PLOT
+```{r}
+
+maryland_math <- math %>%
+  filter(STNAM == "MARYLAND") %>%
+  mutate(LEANM = tolower(LEANM)) %>% 
+  mutate(LEANM = str_replace_all(LEANM, " schools", ""),
+         LEANM = str_replace_all(LEANM, " county", ""),
+         LEANM = str_replace_all(LEANM, " public", ""),
+         LEANM = str_replace_all(LEANM, "george's", "georges"),
+         LEANM = str_replace_all(LEANM, "anne's", "annes"),
+         LEANM = str_replace_all(LEANM, "mary's", "marys"),
+         LEANM = str_replace_all(LEANM, "st.", "st")) %>%
+  filter(!str_detect(LEANM, "city"))
+
+```
+
+```{r}
+maryland_datamth <- left_join(maryland_map, maryland_math, by = c("subregion" = "LEANM"))
+```
+
+```{r}
+math.plot <- ggplot(maryland_datamth, aes(x=long, y=lat, group=group, fill=PCTPROF)) +
+  geom_polygon(color="black") + 
+  scale_fill_gradient(low="skyblue", high="navyblue", na.value="white", limits=c(15,45)) +
+  coord_map() +
+  theme_map() +
+  labs(title="Maryland Math Proficiency Scores by County", fill="% Proficient") +
+  theme(plot.title=element_text(size=9), legend.direction="horizontal", legend.box.just="center",
+        legend.key.height = unit(0.2, "cm"), 
+        legend.key.width = unit(.5, "cm"))
+
+```
+
+
+** Find the math and reading averages for comparing states **
+```{r}
+math.avg.east <- math %>% 
+  group_by(STNAM) %>% 
+  summarise(avg.math.proficiency = mean(PCTPROF)) %>% 
+  filter(STNAM %in% c("NORTH CAROLINA", "SOUTH CAROLINA", "VIRGINIA", "GEORGIA", "MARYLAND"))
+
+reading.avg.east <- reading %>% 
+  group_by(STNAM) %>% 
+  summarise(avg.reading.proficiency = mean(PCTPROF))%>% 
+  filter(STNAM %in% c("NORTH CAROLINA", "SOUTH CAROLINA", "VIRGINIA", "GEORGIA", "MARYLAND"))
+```
+
+```{r}
+all.scores.east <- left_join(reading.avg.east, math.avg.east, by = "STNAM")
+```
+
+## one plot for both math and reading, east coast states
+```{r}
+bar.chart <- ggplot() +
+  geom_col(all.scores.east, mapping=aes(`STNAM`, avg.math.proficiency, fill="blue"), color="black",
+           just = 1, width = .4) +
+  geom_col(all.scores, mapping=aes(`STNAM`, avg.reading.proficiency, fill= "red"), color="black",
+           just = 0, width = .4) +
+  labs(x = "", y = "Proficiency Scores", fill = "Subject") +
+  scale_fill_manual(values = c("navyblue", "grey60"), labels = c("Math", "Reading")) +
+    scale_x_discrete(labels = c("Georgia", "Maryland", "North Carolina", "South Carolina", "Virgina")) +
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.background = element_blank(),
+        legend.key = element_rect(fill = "white", colour = "white"))
+```
+
+## patching together
+```{r}
+my_dashboard <- (reading.plot | math.plot) / bar.chart  +
+  plot_annotation(
+    title = 'Maryland Statewide Proiciency Scores'  ) +
+  plot_layout(heights=c(8.5, 6.5))
+
+ggsave(plot=my_dashboard, filename="maryland.png",
+       width=8, height=5, dpi=300)
+```
+
+
